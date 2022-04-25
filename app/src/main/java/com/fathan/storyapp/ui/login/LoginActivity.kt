@@ -130,7 +130,7 @@ class LoginActivity : AppCompatActivity() {
         binding.loginButton.setOnClickListener {
             val email = binding.etEmail.text.toString()
             val password = binding.etPasswordLogin.text.toString()
-            loginViewModel.loginUser(this,email,password)
+            loginViewModel.loginUser(email,password)
         }
     }
 

@@ -1,12 +1,16 @@
 package com.fathan.storyapp.data.responses
 
 import android.os.Parcelable
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 import kotlinx.parcelize.Parcelize
 
+@Entity(tableName = "story")
 @Parcelize
 data class ListStoryItem(
 
+    @PrimaryKey
     @field:SerializedName("id")
     val id:String,
 

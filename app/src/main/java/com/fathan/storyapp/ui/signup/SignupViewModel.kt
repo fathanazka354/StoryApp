@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import com.fathan.storyapp.R
 import com.fathan.storyapp.data.remote.ApiConfig
 import com.fathan.storyapp.data.responses.FileUploadResponse
+import com.fathan.storyapp.utils.wrapEspressoIdlingResource
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -25,7 +26,7 @@ class SignupViewModel: ViewModel() {
     private val _isEmailEmpty = MutableLiveData<Boolean>()
     val isEmailEmpty : LiveData<Boolean> = _isEmailEmpty
 
-    private val _isPasswordEmpty =MutableLiveData<Boolean>()
+    private val _isPasswordEmpty = MutableLiveData<Boolean>()
     val isPasswordEmpty :LiveData<Boolean> = _isPasswordEmpty
 
     private val _isPasswordValid = MutableLiveData<Boolean>()
@@ -42,7 +43,7 @@ class SignupViewModel: ViewModel() {
         return android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
     }
 
-    private fun formNotEmpty(name:String, password:String,email:String):Boolean{
+    fun formNotEmpty(name:String, password:String,email:String):Boolean{
         var isNotEmpty = true
 
         if (name.isEmpty()){
@@ -76,43 +77,45 @@ class SignupViewModel: ViewModel() {
         return isValid
     }
 
-    fun signUp(context: Context,name: String,email: String,pass: String){
+    fun signUp(name: String,email: String,pass: String){
         if (formValidation(name,pass,email)){
-            val client = ApiConfig.getApiService().postRegister(name,email,pass)
-            _isLoading.value = true
-            client.enqueue(object : Callback<FileUploadResponse>{
-                override fun onResponse(
-                    call: Call<FileUploadResponse>,
-                    response: Response<FileUploadResponse>
-                ) {
-                    Log.d("SignupViewModel:","ResponseBody")
+            wrapEspressoIdlingResource {
+                val client = ApiConfig.getApiService().postRegister(name,email,pass)
+                _isLoading.value = true
+                client.enqueue(object : Callback<FileUploadResponse>{
+                    override fun onResponse(
+                        call: Call<FileUploadResponse>,
+                        response: Response<FileUploadResponse>
+                    ) {
+                        Log.d("SignupViewModel:","ResponseBody")
 
-                    val responseBody = response.body()
-                    if (response.isSuccessful && responseBody != null){
-                    Log.d("SignupViewModel:","ResponseBodySuccess")
-                        val error = responseBody.error
-                        if (!error){
-                    Log.d("SignupViewModel:","ResponseBodySuccessBanget")
-                            _isLoading.value = false
-                            _APImess.value = responseBody.message
+                        val responseBody = response.body()
+                        if (response.isSuccessful && responseBody != null){
+                        Log.d("SignupViewModel:","ResponseBodySuccess")
+                            val error = responseBody.error
+                            if (!error){
+                        Log.d("SignupViewModel:","ResponseBodySuccessBanget")
+                                _isLoading.value = false
+                                _APImess.value = responseBody.message
+                            }else{
+                                _isLoading.value = true
+                                _APImess.value = "Failed create user"
+                            }
                         }else{
-                            _isLoading.value = true
-                            _APImess.value = "Failed create user"
+                        Log.d("SignupViewModel:","ResponseBodySuccessTapiSudahDibuat")
+                            _isLoading.value = false
+                            _APImess.value = R.string.email_has_been_created.toString()
+                            Log.e(SignupActivity.TAG, "onFailure: ${response.message()}")
                         }
-                    }else{
-                    Log.d("SignupViewModel:","ResponseBodySuccessTapiSudahDibuat")
-                        _isLoading.value = false
-                        _APImess.value = context.getString(R.string.email_has_been_created)
-                        Log.e(SignupActivity.TAG, "onFailure: ${response.message()}")
                     }
-                }
 
-                override fun onFailure(call: Call<FileUploadResponse>, t: Throwable) {
-                    _isLoading.value = true
-                    _APImess.value = t.message
-                        Log.e(SignupActivity.TAG, "onFailure: ${t.message}")
-                }
-            })
+                    override fun onFailure(call: Call<FileUploadResponse>, t: Throwable) {
+                        _isLoading.value = true
+                        _APImess.value = t.message
+                            Log.e(SignupActivity.TAG, "onFailure: ${t.message}")
+                    }
+                })
+            }
         }
     }
 }

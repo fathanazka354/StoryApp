@@ -105,7 +105,7 @@ class SignupActivity : AppCompatActivity() {
             val name = binding.nameEditTextLayout.text.toString()
             val email = binding.etEmail.text.toString()
             val password = binding.etPassword.text.toString()
-            signupViewModel.signUp(this,name,email,password)
+            signupViewModel.signUp(name,email,password)
 
         }
     }

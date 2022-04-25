@@ -7,7 +7,9 @@ import com.fathan.storyapp.R
 import com.fathan.storyapp.helper.UserPreference
 import com.fathan.storyapp.data.local.UserModel
 import com.fathan.storyapp.data.remote.ApiConfig
+import com.fathan.storyapp.data.responses.LoginRes
 import com.fathan.storyapp.data.responses.LoginResponse
+import com.fathan.storyapp.utils.wrapEspressoIdlingResource
 import kotlinx.coroutines.launch
 import retrofit2.Call
 import retrofit2.Callback
@@ -31,6 +33,9 @@ class LoginViewModel(private val pref: UserPreference) : ViewModel() {
 
     private val _isPasswordValid = MutableLiveData<Boolean>()
     val isPasswordValid: LiveData<Boolean> = _isPasswordValid
+
+    private val _dataUser = MutableLiveData<LoginRes>()
+    val dataUser: LiveData<LoginRes> = _dataUser
 
     fun getUser(): LiveData<UserModel> {
         return pref.getUser().asLiveData()
@@ -76,50 +81,53 @@ class LoginViewModel(private val pref: UserPreference) : ViewModel() {
         return isValid
     }
 
-    fun loginUser(context: Context, email: String, password: String){
+    fun loginUser(email: String, password: String){
         if(formValidation(email,password)) {
-            val client = ApiConfig.getApiService().postLogin(email, password)
-            _isLoading.value = true
-            Log.d("LoginViewModel:","masukformValidation")
-            client.enqueue(object : Callback<LoginResponse> {
-                override fun onResponse(
-                    call: Call<LoginResponse>,
-                    response: Response<LoginResponse>
-                ) {
-                    val responseBody = response.body()
-                    Log.d("LoginViewModel:","ResponseBody")
-                    if (response.isSuccessful && responseBody != null) {
-                    Log.d("LoginViewModel:","ResponseBodySuccess")
-                        val error = responseBody.error
-                        if (!error) {
-                            val user = UserModel(
-                                responseBody.loginResult.userId,
-                                responseBody.loginResult.name,
-                                responseBody.loginResult.token,
-                                true
-                            )
-                            login(user)
-                            _isLoading.value = false
-                            _APImessage.value = responseBody.message
-                            Log.e(LoginActivity.TAG,"onSuccess: ${responseBody.message}")
+            wrapEspressoIdlingResource {
+                val client = ApiConfig.getApiService().postLogin(email, password)
+                _isLoading.value = true
+                Log.d("LoginViewModel:","masukformValidation")
+                client.enqueue(object : Callback<LoginResponse> {
+                    override fun onResponse(
+                        call: Call<LoginResponse>,
+                        response: Response<LoginResponse>
+                    ) {
+                        val responseBody = response.body()
+                        Log.d("LoginViewModel:","ResponseBody")
+                        if (response.isSuccessful && responseBody != null) {
+                        Log.d("LoginViewModel:","ResponseBodySuccess")
+                            val error = responseBody.error
+                            if (!error) {
+                                val user = UserModel(
+                                    responseBody.loginResult.userId,
+                                    responseBody.loginResult.name,
+                                    responseBody.loginResult.token,
+                                    true
+                                )
+                                login(user)
+                                _dataUser.value = responseBody.loginResult
+                                _isLoading.value = false
+                                _APImessage.value = responseBody.message
+                                Log.e(LoginActivity.TAG,"onSuccess: ${responseBody.message}")
+                            } else {
+                                _isLoading.value = false
+                                _APImessage.value = R.string.login_is_failed.toString()
+                            }
                         } else {
                             _isLoading.value = false
-                            _APImessage.value = context.getString(R.string.login_is_failed)
+                            _APImessage.value = R.string.wrong_email_pass.toString()
+                            Log.e(LoginActivity.TAG, "onFailure: ${response.message()}")
                         }
-                    } else {
-                        _isLoading.value = false
-                        _APImessage.value = context.getString(R.string.wrong_email_pass)
-                        Log.e(LoginActivity.TAG, "onFailure: ${response.message()}")
                     }
-                }
 
-                override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
-                    _isLoading.value = false
-                    _APImessage.value = t.message
-                    Log.e(LoginActivity.TAG, "onFailure: ${t.message}")
-                }
+                    override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
+                        _isLoading.value = false
+                        _APImessage.value = t.message
+                        Log.e(LoginActivity.TAG, "onFailure: ${t.message}")
+                    }
 
-            })
+                })
+            }
         }
     }
 }

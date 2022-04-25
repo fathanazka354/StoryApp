@@ -1,22 +1,28 @@
 package com.fathan.storyapp.ui.addstory
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.Location
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModelProvider
+import com.fathan.storyapp.R
 import com.fathan.storyapp.data.remote.ApiConfig
 import com.fathan.storyapp.data.responses.StoryResponse
 import com.fathan.storyapp.databinding.ActivityAddStoryBinding
@@ -28,6 +34,8 @@ import com.fathan.storyapp.ui.ViewModelFactory
 import com.fathan.storyapp.ui.camera.CameraActivity
 import com.fathan.storyapp.ui.login.LoginActivity
 import com.fathan.storyapp.ui.main.MainActivity
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -38,6 +46,7 @@ import retrofit2.Callback
 import retrofit2.Response
 import java.io.File
 
+
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class AddStoryActivity : AppCompatActivity() {
@@ -46,6 +55,12 @@ class AddStoryActivity : AppCompatActivity() {
     private lateinit var token :String
     private var getFile: File? = null
     private lateinit var addStoryViewModel: AddStoryViewModel
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+//    private lateinit var mMap: GoogleMap
+    var mFusedLocationClient: FusedLocationProviderClient? = null
+    private var lastLocation: Location? = null
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         token = intent.getStringExtra(EXTRA_TOKEN).toString()
@@ -54,6 +69,8 @@ class AddStoryActivity : AppCompatActivity() {
         _binding = ActivityAddStoryBinding.inflate(layoutInflater)
         setContentView(binding.root)
         Log.d("Data Token:",token)
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         addStoryViewModel = ViewModelProvider(
             this,
@@ -67,6 +84,7 @@ class AddStoryActivity : AppCompatActivity() {
                 REQUEST_CODE_PERMISSIONS
             )
         }
+        getMyLastLocation()
         addStoryViewModel.getUser().observe(this,{user->
             if (user.isLogin){
                 Log.d("MainActivity: ",user.token)
@@ -78,14 +96,21 @@ class AddStoryActivity : AppCompatActivity() {
         })
         binding.btnKamera.setOnClickListener { startCameraX() }
         binding.btnGallery.setOnClickListener { startGallery() }
-        binding.btnSubmit.setOnClickListener { uploadImage() }
+        binding.btnSubmit.setOnClickListener { checkPermissions() }
     }
 
+    private fun checkPermissions(){
 
-    private fun uploadImage() {
+        if (ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),1)
+        }
+        else {
+            getMyLastLocation()
+        }
+    }
+    private fun uploadImage(lat:Double,lon:Double) {
         if (getFile != null) {
             val file = reduceFileImage(getFile as File)
-
             val description = binding.editTextTextMultiLine.text.toString().toRequestBody("text/plain".toMediaType())
             val requestImageFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val imageMultipart: MultipartBody.Part = MultipartBody.Part.createFormData(
@@ -94,7 +119,15 @@ class AddStoryActivity : AppCompatActivity() {
                 requestImageFile
             )
 
-            val service = ApiConfig.getApiService().postStory("Bearer $token",description,imageMultipart)
+//            addStoryViewModel.getUser().observe(this,{
+//                Log.d(TAG, "uploadImage: bisa upluad")
+//                addStoryViewModel.addStoryWithLocation("Bearer ${it.token}",description,file,lat,lon)
+//                addStoryViewModel.toastMesage.observe(this,{
+//                    Toast.makeText(this,it.toString(),Toast.LENGTH_SHORT).show()
+//                })
+//            })
+//
+            val service = ApiConfig.getApiService().postStoryWithLocation("Bearer $token",description,imageMultipart,lat,lon)
 
             service.enqueue(object : Callback<StoryResponse> {
                 override fun onResponse(
@@ -164,30 +197,165 @@ class AddStoryActivity : AppCompatActivity() {
     }
 
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (!allPermissionsGranted()) {
-                Toast.makeText(
-                    this,
-                    "Tidak mendapatkan permission.",
-                    Toast.LENGTH_SHORT
-                ).show()
-                finish()
+//    private val requestPermissionLauncher =
+//        registerForActivityResult(
+//            ActivityResultContracts.RequestMultiplePermissions()
+//        ) { permissions ->
+//            when {
+//                permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false -> {
+//                    // Precise location access granted.
+//                    getMyLastLocation()
+//                }
+//                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false -> {
+//                    // Only approximate location access granted.
+//                    getMyLastLocation()
+//                }
+//                else -> {
+//                    // No location access granted.
+//                }
+//            }
+//        }
+//    private fun checkPermission(permission: String): Boolean {
+//        return ContextCompat.checkSelfPermission(
+//            this,
+//            permission
+//        ) == PackageManager.PERMISSION_GRANTED
+//    }
+    @SuppressLint("MissingPermission")
+    private fun getMyLastLocation() {
+        fusedLocationClient.lastLocation?.addOnSuccessListener {
+            if (it == null){
+                Toast.makeText(this,"Sorry cant get Location",Toast.LENGTH_SHORT).show()
+            }else it.apply {
+                val lat = it.latitude
+                val lon = it.longitude
+                Toast.makeText(this@AddStoryActivity,"location at $lat, $lon",Toast.LENGTH_SHORT).show()
+                uploadImage(lat,lon)
             }
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1){
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                if (ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED){
+                    Toast.makeText(this,"Permission Granted",Toast.LENGTH_SHORT).show()
+                    getMyLastLocation()
+                }
+                else{
+                    Toast.makeText(this,"Permission Denied",Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
-
-
+//
+//    @SuppressLint("MissingPermission")
+//    private fun getLastLocation() {
+//        fusedLocationClient?.lastLocation!!.addOnCompleteListener(this) { task ->
+//            if (task.isSuccessful && task.result != null) {
+//                lastLocation = task.result
+////                latitudeText!!.text = latitudeLabel + ": " + (lastLocation)!!.latitude
+////                longitudeText!!.text = longitudeLabel + ": " + (lastLocation)!!.longitude
+//                Toast.makeText(this,"lat : ${(lastLocation)!!.latitude} + long : ${(lastLocation)!!.longitude}",Toast.LENGTH_SHORT).show()
+//
+//            }
+//            else {
+//                Log.w(TAG, "getLastLocation:exception", task.exception)
+//                showMessage("No location detected. Make sure location is enabled on the device.")
+//            }
+//        }
+//    }
+//    private fun showMessage(value: String) {
+//        val container = findViewById<View>(R.id.constrain_add_story)
+//        if (container != null) {
+//            Toast.makeText(this@AddStoryActivity, value, Toast.LENGTH_LONG).show()
+//        }
+//    }
+//    private fun showSnackbar(
+//        mainTextStringId: String, actionStringId: String,
+//        listener: View.OnClickListener
+//    ) {
+//        Toast.makeText(this@AddStoryActivity, mainTextStringId, Toast.LENGTH_LONG).show()
+//    }
+//    private fun checkPermissions(): Boolean {
+//        val permissionState = ActivityCompat.checkSelfPermission(
+//            this,
+//            Manifest.permission.ACCESS_COARSE_LOCATION
+//        )
+//        return permissionState == PackageManager.PERMISSION_GRANTED
+//    }
+//    private fun startLocationPermissionRequest() {
+//        ActivityCompat.requestPermissions(
+//            this@AddStoryActivity,
+//            arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
+//            REQUEST_PERMISSIONS_REQUEST_CODE
+//        )
+//    }
+//    private fun requestPermissions() {
+//        val shouldProvideRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+//            this,
+//            Manifest.permission.ACCESS_COARSE_LOCATION
+//        )
+//        if (shouldProvideRationale) {
+//            Log.i(TAG, "Displaying permission rationale to provide additional context.")
+//            showSnackbar("Location permission is needed for core functionality", "Okay",
+//                View.OnClickListener {
+//                    startLocationPermissionRequest()
+//                })
+//        }
+//        else {
+//            Log.i(TAG, "Requesting permission")
+//            startLocationPermissionRequest()
+//        }
+//    }
+//
+//    @SuppressLint("MissingSuperCall")
+//    override fun onRequestPermissionsResult(
+//        requestCode: Int, permissions: Array<String>,
+//        grantResults: IntArray
+//    ) {
+//        Log.i(TAG, "onRequestPermissionResult")
+//        if (requestCode == REQUEST_PERMISSIONS_REQUEST_CODE) {
+//            when {
+//                grantResults.isEmpty() -> {
+//                    // If user interaction was interrupted, the permission request is cancelled and you
+//                    // receive empty arrays.
+//                    Log.i(TAG, "User interaction was cancelled.")
+//                }
+//                grantResults[0] == PackageManager.PERMISSION_GRANTED -> {
+//                    // Permission granted.
+//                    getLastLocation()
+//                }
+//                else -> {
+//                    showSnackbar("Permission was denied", "Settings",
+//                        View.OnClickListener {
+//                            // Build intent that displays the App settings screen.
+//                            val intent = Intent()
+//                            intent.action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+//                            val uri = Uri.fromParts(
+//                                "package",
+//                                Build.DISPLAY, null
+//                            )
+//                            intent.data = uri
+//                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+//                            startActivity(intent)
+//                        }
+//                    )
+//                }
+//            }
+//        }
+//    }
     companion object{
+        private val TAG = "LocationProvider"
+        private val REQUEST_PERMISSIONS_REQUEST_CODE = 34
         const val EXTRA_TOKEN = "extra_token"
         const val CAMERA_X_RESULT = 200
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
